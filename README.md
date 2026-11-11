@@ -54,9 +54,25 @@ Against exact steady waves of finite height (Fenton 1988), sampled like the lida
 
 ## Requirements
 
-Python ≥ 3.8 with PyTorch ≥ 1.10, numpy, scipy and matplotlib (`pip install -r requirements.txt`).
-A GPU is used when `torch.cuda.is_available()`; this includes AMD GPUs with a ROCm build of PyTorch.
-The MATLAB scripts need only base MATLAB.
+Python ≥ 3.8 with PyTorch ≥ 1.10, numpy, scipy and matplotlib. The MATLAB scripts need only base
+MATLAB.
+
+The same code runs on an NVIDIA GPU, an AMD GPU or the CPU. PyTorch's ROCm builds expose AMD GPUs
+through the `torch.cuda` interface, so the log prints `device cuda` on either vendor. Only the
+installation differs; choose the wheel for your platform at https://pytorch.org/get-started/locally/:
+
+```bash
+pip install numpy scipy matplotlib
+pip install torch --index-url https://download.pytorch.org/whl/rocmX.Y   # AMD GPU (ROCm X.Y)
+pip install torch --index-url https://download.pytorch.org/whl/cuXYZ     # NVIDIA GPU (CUDA X.Y.Z)
+pip install torch                                                        # CPU only (slow)
+```
+
+Check which backend is active:
+```bash
+python -c "import torch; print(torch.__version__, 'HIP', torch.version.hip, 'CUDA', torch.version.cuda, torch.cuda.is_available())"
+```
+On ROCm, the warning `amdgpu.ids: No such file or directory` is harmless.
 
 ## Usage
 

@@ -1,0 +1,3 @@
+# The MATLAB scripts are data preparation (inventory, export, gap study); the method is the Python package.
+# Keep them out of GitHub's language statistics.
+matlab/** linguist-detectable=false
