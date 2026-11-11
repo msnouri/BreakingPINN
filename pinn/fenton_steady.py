@@ -87,32 +87,46 @@ def _residual(v, H, k, N):
     return np.concatenate([psi, dyn, [mean, height]])
 
 
-def solve(d, H, L, N=40, steps=12, verbose=False):
-    """Steady wave of height H and wavelength L in depth d, by continuation in height."""
+def _initial(Hs, k, N, X):
+    c0 = np.sqrt(np.tanh(k) / k)
+    a = Hs / 2
+    eta = 1.0 + a * np.cos(k * X)
+    Bj = np.zeros(N)
+    Bj[0] = a * c0 / np.tanh(k)
+    return np.concatenate([eta, Bj, [c0, c0, 0.5 * c0 ** 2 + 1.0]])
+
+
+def solve(d, H, L, N=40, steps=12, verbose=False, tol=1e-9, min_step=1e-4):
+    """Steady wave of height H and wavelength L in depth d, by continuation in height.
+
+    The height is raised from a small wave in `steps` equal increments; when a step fails to converge,
+    it is halved and retried from the last converged wave (down to `min_step` in H/d). This reaches
+    waves close to the limiting height, where B = u_crest / c approaches 1.
+    """
     from scipy.optimize import least_squares
     N = int(N)
     k = 2 * np.pi / (L / d)                     # dimensionless wavenumber k d
     Hn = H / d
     m = np.arange(N + 1)
     X = m * np.pi / (N * k)
-    c0 = np.sqrt(np.tanh(k) / k)
-    v = None
-    for s in range(1, steps + 1):
-        Hs = Hn * s / steps
-        if v is None:
-            a = Hs / 2
-            eta = 1.0 + a * np.cos(k * X)
-            Bj = np.zeros(N)
-            Bj[0] = a * c0 / np.tanh(k)
-            v = np.concatenate([eta, Bj, [c0, c0, 0.5 * c0 ** 2 + 1.0]])
-        sol = least_squares(_residual, v, args=(Hs, k, N), xtol=1e-15, ftol=1e-15, gtol=1e-15,
+    dH = Hn / steps
+    Hs_done, v = 0.0, None
+    while Hs_done < Hn - 1e-12:
+        Hs = min(Hs_done + dH, Hn)
+        v0 = _initial(Hs, k, N, X) if v is None else v
+        sol = least_squares(_residual, v0, args=(Hs, k, N), xtol=1e-15, ftol=1e-15, gtol=1e-15,
                             x_scale='jac', max_nfev=2000)
-        v = sol.x
-        res = np.max(np.abs(_residual(v, Hs, k, N)))
+        res = np.max(np.abs(_residual(sol.x, Hs, k, N)))
+        if res <= tol:
+            v, Hs_done = sol.x, Hs
+            if verbose:
+                print(f"  H/d = {Hs:.4f}: residual {res:.1e}, c = {v[2 * N + 1]:.4f} sqrt(gd)")
+            continue
+        dH /= 2
         if verbose:
-            print(f"  H/d = {Hs:.3f}: residual {res:.1e}, c = {v[2 * N + 1]:.4f} sqrt(gd)")
-        if res > 1e-10:
-            raise RuntimeError(f"no convergence at H/d = {Hs:.3f} (residual {res:.1e})")
+            print(f"  H/d = {Hs:.4f}: residual {res:.1e}, step halved to {dH:.2e}")
+        if dH < min_step:
+            raise RuntimeError(f"no convergence beyond H/d = {Hs_done:.4f} (residual {res:.1e} at {Hs:.4f})")
     sg = np.sqrt(G * d)
     eta = v[:N + 1] * d
     Bj = v[N + 1:2 * N + 1] * sg * d
@@ -131,6 +145,10 @@ if __name__ == '__main__':
         w = solve(d, 1.5, L, N=N)
         print(f"d = {d} m, H = 1.5 m, L = {L} m, N = {N}: c = {w.c:.5f} m/s, u_crest = {w.u_crest:.5f} m/s, "
               f"B = {w.B:.5f}, crest {w.eta(0, 0):.4f} m, trough {w.eta(L / 2, 0):.4f} m")
+    # steep waves near the limiting height (L/d = 13.3): B approaches 1; convergence in N
+    for Hd in (0.70, 0.717, 0.723, 0.727):
+        Bs = [solve(d, Hd * d, L, N=N, steps=60).B for N in (32, 40, 48)]
+        print(f"H/d = {Hd:.3f}: B = " + ", ".join(f"{b:.4f} (N={N})" for b, N in zip(Bs, (32, 40, 48))))
     # Stokes second order: crest - trough asymmetry for a moderate wave in deep-ish water
     d2, H2, L2 = 20.0, 0.5, 30.0
     w = solve(d2, H2, L2, N=24)

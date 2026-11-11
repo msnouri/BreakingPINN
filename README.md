@@ -48,6 +48,8 @@ Against exact steady waves of finite height (Fenton 1988), sampled like the lida
 | `pinn/carini_pinn_load.py` | Reader for the MATLAB export |
 | `pinn/fenton_steady.py` | Exact steady waves (Fourier approximation) for the benchmark |
 | `pinn/bench_steady.py`, `collect_results.py`, `plot_bench.py` | Steady-wave benchmark and its table and figure |
+| `pinn/bench_high.sh` | Benchmark near the threshold: steady waves with B = 0.75–0.88 |
+| `pinn/plot_breakers.py`, `pinn/figstyle.py` | Field-results figure; common LaTeX figure style |
 | `matlab/carini_wave_inventory.m` | Inventory of the waves, breaker classes and records before onset |
 | `matlab/carini_export_pinn.m` | Export of the per-wave profiles, depths and crest tracks for the PINN |
 | `matlab/carini_gap_study.m` | Lidar return pattern near the crests; mask of gap-filled points |
