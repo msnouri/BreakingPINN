@@ -1,0 +1,19 @@
+# data and results (not distributed)
+*.mat
+*.csv
+runs/
+*_pinn.json
+*_pinn.png
+run_*.json
+*.out
+*.log
+*.tgz
+*.zip
+# python / editors
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.spyproject/
+.vscode/
+.DS_Store
+*.asv
