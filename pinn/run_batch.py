@@ -100,6 +100,9 @@ def main():
     ap.add_argument('--limit', type=int, default=None, help='only the first N waves (trial)')
     ap.add_argument('--ids', type=int, nargs='*', default=None, help='explicit wave ids instead of --set')
     ap.add_argument('--summary-only', action='store_true')
+    ap.add_argument('--match-lengths', default=None, metavar='BREAKER_DIR',
+                    help='for controls: train each on its last N scans only, with N drawn (fixed seed) from the record '
+                         'lengths up to onset of the breakers whose results are in BREAKER_DIR')
     a = ap.parse_args(argv)
     outdir = a.outdir or os.path.join('runs', f'batch_{a.set}')
     os.makedirs(os.path.join(outdir, 'logs'), exist_ok=True)
@@ -107,12 +110,20 @@ def main():
         summarize(outdir)
         return
 
-    if a.ids:
-        ids = a.ids
-    else:
-        waves, _ = load(a.export, retained_only=False)
-        ids = pick_waves(waves, a.set, a.n_controls)
-        del waves
+    ranges = {}
+    waves, _ = load(a.export, retained_only=False)
+    ids = a.ids if a.ids else pick_waves(waves, a.set, a.n_controls)
+    if a.match_lengths:
+        lens = [int(json.load(open(f))['onset_scan']) for f in glob.glob(os.path.join(a.match_lengths, '*_pinn.json'))]
+        if not lens:
+            sys.exit(f'no breaker results in {a.match_lengths}')
+        rng = np.random.default_rng(12345)
+        nscan = {int(w['id']): int(w['t'].size) for w in waves}
+        for wid in ids:
+            n = min(int(rng.choice(lens)), nscan[wid])
+            ranges[wid] = (nscan[wid] - n + 1, nscan[wid])
+        print(f'record lengths matched to {len(lens)} breakers (median {int(np.median(lens))} scans)')
+    del waves
     if a.limit:
         ids = ids[:a.limit]
     todo = [i for i in ids if not os.path.exists(os.path.join(outdir, f'{i}_pinn.json'))]
@@ -121,6 +132,8 @@ def main():
     for n, wid in enumerate(todo, 1):
         cmd = [sys.executable, os.path.join(HERE, 'run_field_wave.py'), a.export, '--id', str(wid),
                '--outdir', outdir] + extra
+        if wid in ranges:
+            cmd += ['--scan-range', str(ranges[wid][0]), str(ranges[wid][1])]
         t0 = time.time()
         with open(os.path.join(outdir, 'logs', f'{wid}.log'), 'w') as log:
             rc = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT)
