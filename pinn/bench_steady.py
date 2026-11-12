@@ -62,20 +62,20 @@ def cubic_fill(z, measured):
 
 def run(H=1.5, window=0.3, gaps=False, steps=6000, seed=0, d=3.0, L=40.0, noise=0.005, x_start=8.0, verbose=True,
         focus=0.0, x64=False, width=64, sigma_phi=(1.0, 0.0, 0.5), tols=(0.01, 0.01, 0.02, 0.1, 0.01), lbfgs=2000, depth_error=0.0, gap_params=(0.25, 0.12), train_on_fill=False,
-        lbfgs_rounds=1, lbfgs_batch=2.0, sigma_eta_x=3.0, c_window=5, n_fourier=48):
+        lbfgs_rounds=1, lbfgs_batch=2.0, sigma_eta_x=3.0, c_window=5, n_fourier=48, rate=5.17, dx=0.05):
     rng = np.random.default_rng(seed)
     wave = fs.solve(d, H, L, N=n_fourier, steps=60)
     T = L / wave.c
-    x = np.arange(0.0, 40.0 + 1e-9, 0.05)
-    n_scan = int(round(window * T * 5.17)) + 1
-    t = np.arange(n_scan) / 5.17
+    x = np.arange(0.0, 40.0 + 1e-9, dx)
+    n_scan = int(round(window * T * rate)) + 1
+    t = np.arange(n_scan) / rate
     X, Tt = np.meshgrid(x, t, indexing='ij')
     eta_true = wave.eta(X - x_start, Tt)
     obs = eta_true + rng.normal(0.0, noise, eta_true.shape)
     meas = np.ones_like(obs, bool)
     if gaps:
         for j in range(n_scan):
-            meas[:, j] = clustered_mask(x.size, 0.05, rng, patch_mean=gap_params[0], gap_mean=gap_params[1])
+            meas[:, j] = clustered_mask(x.size, dx, rng, patch_mean=gap_params[0], gap_mean=gap_params[1])
     cfg = pp.Config(steps_eta=steps // 5, steps_phi=2 * steps // 5, steps_joint=2 * steps // 5, seed=seed,
                     log_every=max(steps // 10, 1), crest_focus=focus, x64=x64, width_eta=width, width_phi=width,
                     sigma_phi=tuple(sigma_phi), tol_data=tols[0], tol_laplace=tols[1], tol_kin=tols[2],
@@ -112,7 +112,7 @@ def run(H=1.5, window=0.3, gaps=False, steps=6000, seed=0, d=3.0, L=40.0, noise=
     u_ex_p, _ = wave.velocity(np.full(zp.size, xcm - x_start), zp, np.full(zp.size, t[jm]))
     u_pi_p, _ = model.velocity(np.full(zp.size, xcm), zp, np.full(zp.size, t[jm]))
     out = {
-        'H': H, 'd': d, 'L': L, 'T': T, 'window_T': window, 'n_scan': n_scan, 'gaps': bool(gaps), 'focus': focus, 'x64': x64, 'width': width, 'sigma_phi': list(sigma_phi), 'tols': list(tols), 'lbfgs': lbfgs, 'depth_error': depth_error, 'gap_params': list(gap_params), 'train_on_fill': bool(train_on_fill),
+        'H': H, 'd': d, 'L': L, 'T': T, 'window_T': window, 'n_scan': n_scan, 'gaps': bool(gaps), 'focus': focus, 'x64': x64, 'width': width, 'sigma_phi': list(sigma_phi), 'tols': list(tols), 'lbfgs': lbfgs, 'depth_error': depth_error, 'gap_params': list(gap_params), 'train_on_fill': bool(train_on_fill), 'noise': noise, 'rate': rate, 'dx': dx, 'seed': seed, 'steps': steps,
         'measured_share': float(meas.mean()), 'steps': steps, 'train_s': train_s,
         'c_exact': wave.c, 'u_crest_exact': wave.u_crest, 'B_exact': wave.B,
         'crest_eta_exact': float(wave.eta(0, 0)),
@@ -153,6 +153,10 @@ if __name__ == '__main__':
     ap.add_argument('--gap-params', type=float, nargs=2, default=[0.25, 0.12], help='mean patch and gap lengths (m)')
     ap.add_argument('--train-on-fill', type=int, default=0, help='fill the gaps with a cubic and train on all points')
     ap.add_argument('--sigma-eta-x', type=float, default=3.0)
+    ap.add_argument('--rate', type=float, default=5.17, help='scans per second')
+    ap.add_argument('--dx', type=float, default=0.05, help='spacing of the points along a profile (m)')
+    ap.add_argument('--noise', type=float, default=0.005, help='standard deviation of the noise (m)')
+    ap.add_argument('--lbfgs-rounds', type=int, default=None)
     ap.add_argument('--out', default='')
     a = ap.parse_args()
     if a.Hd is not None:
@@ -166,10 +170,13 @@ if __name__ == '__main__':
             a.focus = 0.5
         if '--lbfgs' not in sys.argv:
             a.lbfgs = 800
+    if a.lbfgs_rounds is not None:
+        extra['lbfgs_rounds'] = a.lbfgs_rounds
     res, model, wave = run(a.H, a.window, bool(a.gaps), a.steps, a.seed, focus=a.focus, x64=bool(a.x64), width=a.width,
                            sigma_phi=a.sigma_phi, tols=a.tols, lbfgs=a.lbfgs,
                            depth_error=a.depth_error, gap_params=tuple(a.gap_params),
-                           train_on_fill=bool(a.train_on_fill), sigma_eta_x=a.sigma_eta_x, **extra)
+                           train_on_fill=bool(a.train_on_fill), sigma_eta_x=a.sigma_eta_x,
+                           noise=a.noise, rate=a.rate, dx=a.dx, **extra)
     print(json.dumps({k: (round(v, 4) if isinstance(v, float) else v) for k, v in res.items()
                       if k not in ('B_pinn_all', 'profile_z', 'profile_u_exact', 'profile_u_pinn')}, indent=1))
     print('u under the crest (z, exact, PINN):')
