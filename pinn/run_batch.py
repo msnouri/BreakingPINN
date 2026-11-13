@@ -100,6 +100,7 @@ def main():
     ap.add_argument('--limit', type=int, default=None, help='only the first N waves (trial)')
     ap.add_argument('--ids', type=int, nargs='*', default=None, help='explicit wave ids instead of --set')
     ap.add_argument('--summary-only', action='store_true')
+    ap.add_argument('--jobs', type=int, default=1, help='waves trained at the same time on the GPU')
     ap.add_argument('--match-lengths', default=None, metavar='BREAKER_DIR',
                     help='for controls: train each on its last N scans only, with N drawn (fixed seed) from the record '
                          'lengths up to onset of the breakers whose results are in BREAKER_DIR')
@@ -129,7 +130,9 @@ def main():
     todo = [i for i in ids if not os.path.exists(os.path.join(outdir, f'{i}_pinn.json'))]
     print(f'{len(ids)} waves in the set, {len(ids) - len(todo)} already done, {len(todo)} to run -> {outdir}')
     tic = time.time()
-    for n, wid in enumerate(todo, 1):
+    done = [0]
+
+    def one(wid):
         cmd = [sys.executable, os.path.join(HERE, 'run_field_wave.py'), a.export, '--id', str(wid),
                '--outdir', outdir] + extra
         if wid in ranges:
@@ -138,6 +141,8 @@ def main():
         with open(os.path.join(outdir, 'logs', f'{wid}.log'), 'w') as log:
             rc = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT)
         dt = time.time() - t0
+        done[0] += 1
+        n = done[0]
         eta_h = (time.time() - tic) / n * (len(todo) - n) / 3600
         msg = 'ok' if rc == 0 else f'FAILED (exit {rc}, see logs/{wid}.log)'
         bm = ''
@@ -147,6 +152,14 @@ def main():
             if r.get('B_max') is not None:
                 bm = f"  B_max {r['B_max']:.3f}"
         print(f'[{n}/{len(todo)}] wave {wid}: {msg} in {dt:.0f} s{bm}   (about {eta_h:.1f} h left)', flush=True)
+
+    if a.jobs <= 1:
+        for wid in todo:
+            one(wid)
+    else:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=a.jobs) as pool:
+            list(pool.map(one, todo))
     summarize(outdir)
 
 

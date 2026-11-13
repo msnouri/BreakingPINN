@@ -109,6 +109,12 @@ def main():
         'final_losses': model.history[-1, 2:].tolist(), 'final_losses_crest': model.final_crest,
         'good': good.tolist(), 'scans_fitted': last_fit - first, 'c_window': a.c_window,
     }
+    try:
+        sr = model.scan_residuals(t_eval, k['xc'])
+        res['scan_residuals'] = {'names': ['data', 'laplace', 'kinematic', 'dynamic', 'bed'],
+                                 'values': [[None if not np.isfinite(v) else float(v) for v in row] for row in sr]}
+    except Exception as e:                       # keep the run even if this diagnostic fails
+        print('scan residuals not computed:', e)
     Bg = np.where(good, k['B'], np.nan)
     if np.isfinite(Bg).any():
         im = int(np.nanargmax(Bg))

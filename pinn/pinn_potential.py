@@ -316,6 +316,35 @@ def fit(x_obs, t_obs, eta_obs, x_bed, h_bed, cfg=Config(), verbose=True, crest_t
         model.final_crest = fc
         if verbose:
             log('crest', it_total, sum(fc), fc)
+    def scan_residuals(t_scans, x_crest, half_width=4.0, n=1500, dt_obs=0.05):
+        """Normalized residuals (data, Laplace, kinematic, dynamic, bed) at each scan time, from points within
+        half_width of the crest at that instant (data: observations within dt_obs of the scan). NaN where empty."""
+        out = []
+        for tk, xk in zip(np.asarray(t_scans, float), np.asarray(x_crest, float)):
+            if not np.isfinite(xk):
+                out.append([np.nan] * 5)
+                continue
+            lo, hi = max(xk - half_width, x0), min(xk + half_width, x1)
+            xf = rng.uniform(lo, hi, n)
+            tf = np.full(n, tk)
+            top = model.eta(xf, tf)
+            bot = -np.interp(xf, xb, hb)
+            zf = bot + rng.uniform(0, 1, n) * (top - bot)
+            xs = rng.uniform(lo, hi, n)
+            xbb = rng.uniform(lo, hi, n // 3)
+            m = (np.abs(t_obs - tk) < dt_obs) & (x_obs >= lo) & (x_obs <= hi)
+            have_data = bool(m.any())
+            batch = {'xd': T(x_obs[m] if have_data else x_obs[:1]), 'td': T(t_obs[m] if have_data else t_obs[:1]),
+                     'ed': T(eta_obs[m] if have_data else eta_obs[:1]),
+                     'xf': T(xf), 'zf': T(zf), 'tf': T(tf), 'xs': T(xs), 'ts': T(np.full(n, tk)),
+                     'xb': T(xbb), 'tb': T(np.full(xbb.size, tk))}
+            r = [float(q.detach()) for q in residual_parts(batch)]
+            if not have_data:
+                r[0] = np.nan
+            out.append(r)
+        return np.array(out)
+
+    model.scan_residuals = scan_residuals
     model.history = np.array(hist)
     return model
 
