@@ -101,6 +101,7 @@ def main():
     ap.add_argument('--ids', type=int, nargs='*', default=None, help='explicit wave ids instead of --set')
     ap.add_argument('--summary-only', action='store_true')
     ap.add_argument('--jobs', type=int, default=1, help='waves trained at the same time on the GPU')
+    ap.add_argument('--timeout', type=float, default=3600, help='kill a wave that runs longer than this (s)')
     ap.add_argument('--match-lengths', default=None, metavar='BREAKER_DIR',
                     help='for controls: train each on its last N scans only, with N drawn (fixed seed) from the record '
                          'lengths up to onset of the breakers whose results are in BREAKER_DIR')
@@ -139,12 +140,16 @@ def main():
             cmd += ['--scan-range', str(ranges[wid][0]), str(ranges[wid][1])]
         t0 = time.time()
         with open(os.path.join(outdir, 'logs', f'{wid}.log'), 'w') as log:
-            rc = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT)
+            try:
+                rc = subprocess.call(cmd, stdout=log, stderr=subprocess.STDOUT, timeout=a.timeout)
+            except subprocess.TimeoutExpired:
+                rc = 'timeout'
         dt = time.time() - t0
         done[0] += 1
         n = done[0]
         eta_h = (time.time() - tic) / n * (len(todo) - n) / 3600
-        msg = 'ok' if rc == 0 else f'FAILED (exit {rc}, see logs/{wid}.log)'
+        msg = 'ok' if rc == 0 else (f'FAILED (no result after {a.timeout:.0f} s, killed)' if rc == 'timeout'
+                                    else f'FAILED (exit {rc}, see logs/{wid}.log)')
         bm = ''
         jf = os.path.join(outdir, f'{wid}_pinn.json')
         if rc == 0 and os.path.exists(jf):
